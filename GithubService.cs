@@ -121,7 +121,7 @@ namespace AiTaskGenerator
             var cleanOutput = CleanTerminalOutput(rawOutput);
             var cleanError = CleanTerminalOutput(rawError);
 
-            var summary = ParsePlaywrightOutput(cleanOutput);
+            var summary = ParseTestOutput(cleanOutput);
 
             var sb = new StringBuilder();
 
@@ -225,6 +225,66 @@ namespace AiTaskGenerator
             public int Failed { get; set; }
             public string? Duration { get; set; }
             public bool HasCounts => Passed > 0 || Failed > 0;
+        }
+
+        // Dispatcher: detect the test runner from output markers and parse accordingly.
+        private static QaSummary ParseTestOutput(string clean)
+        {
+            // Playwright marker: '[N/M] [browser]'
+            if (Regex.IsMatch(clean, @"\[\d+/\d+\]\s+\[[\w\-]+\]"))
+                return ParsePlaywrightOutput(clean);
+
+            // dotnet test marker: 'Passed!  - Failed:' / 'Failed!  - Failed:'
+            //   or per-test 'Passed Foo.Bar [12 ms]'
+            if (Regex.IsMatch(clean, @"(Passed|Failed)!\s+-\s+Failed:")
+                || Regex.IsMatch(clean, @"^\s*(Passed|Failed|Skipped)\s+\S+\s+\[\d+\s*ms\]",
+                    RegexOptions.Multiline))
+                return ParseDotnetOutput(clean);
+
+            // Unknown format — fall back to playwright (it returns empty if nothing matches).
+            return ParsePlaywrightOutput(clean);
+        }
+
+        private static QaSummary ParseDotnetOutput(string clean)
+        {
+            var s = new QaSummary();
+            var seen = new HashSet<string>();
+
+            foreach (var rawLine in clean.Split('\n'))
+            {
+                var line = rawLine.Trim();
+
+                // Per-test result (with --logger console;verbosity=normal):
+                //   "Passed ai_net_startup.Tests.HealthEndpointTests.GetHealth_ReturnsOk [12 ms]"
+                //   "Failed Foo.Bar.Baz [25 ms]"
+                var perTestMatch = Regex.Match(line,
+                    @"^(Passed|Failed|Skipped)\s+([\w\.]+)\s+\[\d+\s*ms\]");
+                if (perTestMatch.Success)
+                {
+                    var full = perTestMatch.Groups[2].Value;
+                    // Keep "ClassName.MethodName" for readability (last two segments).
+                    var parts = full.Split('.');
+                    var display = parts.Length >= 2
+                        ? parts[^2] + "." + parts[^1]
+                        : full;
+                    if (seen.Add(display)) s.Tests.Add(display);
+                    continue;
+                }
+
+                // Summary line:
+                //   "Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 528 ms"
+                var passMatch = Regex.Match(line, @"Passed:\s*(\d+)");
+                if (passMatch.Success) s.Passed = int.Parse(passMatch.Groups[1].Value);
+
+                var failMatch = Regex.Match(line, @"Failed:\s*(\d+)");
+                if (failMatch.Success) s.Failed = int.Parse(failMatch.Groups[1].Value);
+
+                var durMatch = Regex.Match(line,
+                    @"Duration:\s*([\d.]+\s*(?:ms|s))");
+                if (durMatch.Success) s.Duration = durMatch.Groups[1].Value;
+            }
+
+            return s;
         }
 
         private static QaSummary ParsePlaywrightOutput(string clean)

@@ -82,6 +82,59 @@ namespace AiTaskGenerator
             - Tests must validate acceptance criteria
             - Tests must compile and run
 
+            .NET INTEGRATION TEST PATTERN (xUnit + WebApplicationFactory<Program>):
+
+            For ASP.NET Core API tasks, use integration tests that boot the API in-memory
+            and make real HTTP requests. Example template:
+
+              using Microsoft.AspNetCore.Mvc.Testing;
+              using System.Net;
+              using System.Net.Http.Json;
+
+              public class UserEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+              {
+                  private readonly WebApplicationFactory<Program> _factory;
+                  public UserEndpointTests(WebApplicationFactory<Program> factory)
+                  {
+                      _factory = factory;
+                  }
+
+                  [Fact]
+                  public async Task GetUser_ReturnsOk()
+                  {
+                      var client = _factory.CreateClient();
+                      var response = await client.GetAsync(""/users/1"");
+                      Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                  }
+              }
+
+            .NET REPO STRUCTURE:
+            - Production files (controllers, services, models, Program.cs additions) live
+              in the MAIN project root (alongside Program.cs). Match the existing namespace
+              from .csproj RootNamespace (e.g. 'ai_net_startup').
+            - Test files MUST go in 'ai-net-startup.Tests/' (or whatever folder contains the
+              existing tests project). Namespace 'ai_net_startup.Tests'.
+            - Program.cs already ends with 'public partial class Program { }' so
+              WebApplicationFactory<Program> works. Do NOT remove that line if you rewrite
+              Program.cs.
+
+            .NET TEST CLASS NAMING:
+            - Test class names MUST end in 'Tests' (e.g. UserServiceTests, AuthEndpointTests).
+            - The orchestrator filters dotnet test by class name. If your class doesn't end
+              in 'Tests' and isn't matched by the file name, tests won't run.
+            - One class per file; file name matches class name.
+
+            .NET PACKAGES ALREADY AVAILABLE (do NOT add new ones — the orchestrator does not
+            install packages):
+            - Main project: Microsoft.AspNetCore.OpenApi, all System.*, all built-in
+              ASP.NET Core (Microsoft.AspNetCore.*).
+            - Test project: xunit, xunit.runner.visualstudio, Microsoft.NET.Test.Sdk,
+              Microsoft.AspNetCore.Mvc.Testing, all System.*, project reference to the main.
+            - If the task requires something else (Entity Framework Core, FluentValidation,
+              MediatR, Newtonsoft.Json, AutoMapper, etc.), implement WITHOUT it using only
+              the above. If that is genuinely impossible, return a single ERROR.md file
+              explaining which package must be installed.
+
             LOADING STATE TEST PATTERN (React/Playwright — use this EXACT ordering for any
             assertion about a transient UI state such as 'loading', 'submitting', 'disabled
             during fetch', etc.):

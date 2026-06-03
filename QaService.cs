@@ -39,9 +39,47 @@ namespace AiTaskGenerator
         {
             if (task.TechStack.Contains("React"))
                 return RunPlaywright(generatedTests);
-            //if (task.TechStack.Contains(".NET"))
-            //    return RunDotnetTests(generatedTests);
+            if (task.TechStack.Contains(".NET"))
+                return RunDotnetTests(generatedTests);
             throw new Exception("Unsupported tech stack");
+        }
+
+        private QaResult RunDotnetTests(List<GeneratedFile> tests)
+        {
+            if (tests == null || tests.Count == 0)
+            {
+                return new QaResult
+                {
+                    Success = false,
+                    Output = "",
+                    Error = "AI returned no tests — cannot validate this iteration. " +
+                            "A regenerated attempt must include at least one test file."
+                };
+            }
+
+            var repo = _config["Git:BackendRepoPath"];
+
+            // Extract test class names from generated file paths.
+            // xUnit's --filter does a substring match on FullyQualifiedName, so the
+            // class name alone matches any test in that class regardless of namespace.
+            var classNames = tests
+                .Select(t => Path.GetFileNameWithoutExtension(
+                    FileWriterService.NormalizePath(t.Path, repo)))
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct()
+                .ToList();
+
+            // OR-combine class filters with the pipe operator (vstest syntax).
+            var filter = string.Join("|",
+                classNames.Select(n => $"FullyQualifiedName~{n}"));
+
+            // --logger console;verbosity=normal prints per-test names that the
+            // PR-comment parser uses to build the list of tests.
+            var cmd =
+                $"dotnet test --filter \"{filter}\" " +
+                "--logger \"console;verbosity=normal\" --nologo";
+
+            return Execute(cmd, repo);
         }
 
         private QaResult RunPlaywright(List<GeneratedFile> tests)
