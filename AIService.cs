@@ -1,26 +1,12 @@
-﻿using Microsoft.SemanticKernel;
-
 namespace AiTaskGenerator
 {
     public class AiService
     {
-        private readonly Kernel _kernel;
-        private readonly HttpClient _openAiHttpClient;
+        private readonly IAiClient _ai;
 
-        public AiService(IConfiguration config)
+        public AiService(IAiClient ai)
         {
-            var apiKey = config["OpenAI:ApiKey"];
-            var model = config["OpenAI:Model"];
-
-            _openAiHttpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromMinutes(10)
-            };
-
-            var builder = Kernel.CreateBuilder();
-            builder.AddOpenAIChatCompletion(model, apiKey, httpClient: _openAiHttpClient);
-
-            _kernel = builder.Build();
+            _ai = ai;
         }
 
         public async Task<string> GenerateTasks(string input)
@@ -60,7 +46,7 @@ namespace AiTaskGenerator
                       ""type"": """",
                       ""description"": """",
                       ""acceptanceCriteria"": """",
-                      ""techStack"": "",
+                      ""techStack"": """",
                       ""repoPath"": """"
                     }
                   ]
@@ -69,10 +55,8 @@ namespace AiTaskGenerator
                 Be concise and technical.
                 ";
 
-            var result = await _kernel.InvokePromptAsync(prompt,
-                new KernelArguments { ["input"] = input });
-
-            return result.ToString();
+            return await _ai.InvokePromptAsync(prompt,
+                new Dictionary<string, object?> { ["input"] = input });
         }
     }
 }

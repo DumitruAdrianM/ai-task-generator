@@ -1,31 +1,14 @@
-﻿using Microsoft.SemanticKernel;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 
 namespace AiTaskGenerator
 {
     public class CodeGenerationService
     {
-        private readonly Kernel _kernel;
-        private readonly HttpClient _openAiHttpClient;
+        private readonly IAiClient _ai;
 
-        public CodeGenerationService(IConfiguration config)
+        public CodeGenerationService(IAiClient ai)
         {
-            var apiKey = config["OpenAI:ApiKey"];
-            var model = config["OpenAI:Model"];
-
-            // The default HttpClient used by Semantic Kernel has a 100s timeout.
-            // Regeneration prompts now include previousAttempt + repoContext + qaFeedback,
-            // which for gpt-4.1 can easily exceed 100s end-to-end and trigger a
-            // SocketException ('I/O operation aborted'). Use a longer-lived client.
-            _openAiHttpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromMinutes(10)
-            };
-
-            var builder = Kernel.CreateBuilder();
-            builder.AddOpenAIChatCompletion(model, apiKey, httpClient: _openAiHttpClient);
-
-            _kernel = builder.Build();
+            _ai = ai;
         }
 
         public async Task<string> GenerateCode(TaskItem task, string repoContext)
@@ -268,7 +251,7 @@ namespace AiTaskGenerator
             - multiple files allowed
             ";
 
-            var args = new KernelArguments
+            var args = new Dictionary<string, object?>
             {
                 ["title"] = task.Title,
                 ["description"] = task.Description,
@@ -277,9 +260,7 @@ namespace AiTaskGenerator
                 ["repo"] = repoContext
             };
 
-            var result = await _kernel.InvokePromptAsync(prompt, args);
-
-            return result.ToString();
+            return await _ai.InvokePromptAsync(prompt, args);
         }
 
         //    public async Task<string> RegenerateCode(
@@ -517,7 +498,7 @@ namespace AiTaskGenerator
                 }
                 ";
 
-            var args = new KernelArguments
+            var args = new Dictionary<string, object?>
             {
                 ["title"] = task.Title,
                 ["description"] = task.Description,
@@ -526,7 +507,7 @@ namespace AiTaskGenerator
                 ["repo"] = repoContext
             };
 
-            return (await _kernel.InvokePromptAsync(prompt, args)).ToString();
+            return await _ai.InvokePromptAsync(prompt, args);
         }
 
         public void ValidateFiles(CodeResult result, string techStack)

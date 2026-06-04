@@ -7,9 +7,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Pick the AI provider based on config. Default is OpenAI for backward compat.
+// Switch via:  dotnet user-secrets set "AI:Provider" "Anthropic"
+var aiProvider = builder.Configuration["AI:Provider"] ?? "OpenAI";
+if (aiProvider.Equals("Anthropic", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IAiClient, AnthropicClient>();
+else
+    builder.Services.AddSingleton<IAiClient, OpenAiClient>();
+
 // register services
 builder.Services.AddSingleton<AiService>();
-builder.Services.AddHttpClient<NotionService>(); 
+builder.Services.AddHttpClient<NotionService>();
 builder.Services.AddSingleton<CodeGenerationService>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<RepoReaderService>();
